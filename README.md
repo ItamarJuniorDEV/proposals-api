@@ -1,6 +1,6 @@
 # Proposals API
 
-![CI](https://github.com/ItamarJuniorDEV/proposal-api-php/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/ItamarJuniorDEV/proposals-api/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 > API REST de propostas comerciais em PHP puro, sem framework: máquina de estados no ciclo de vida, versionamento de revisão e geração de contrato na aprovação.
@@ -77,8 +77,8 @@ As transições ficam no enum `ProposalStatus` (`canSend`, `canApprove`, `canRej
 Pré-requisitos: PHP 8.3+, Composer, PostgreSQL 15 (ou Docker).
 
 ```bash
-git clone https://github.com/ItamarJuniorDEV/proposal-api-php
-cd proposal-api-php
+git clone https://github.com/ItamarJuniorDEV/proposals-api
+cd proposals-api
 composer install
 cp .env.example .env
 docker compose up -d
