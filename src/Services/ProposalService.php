@@ -66,6 +66,8 @@ class ProposalService
             throw new InvalidArgumentException('Cliente não encontrado');
         }
 
+        $discountPercent = $this->parseDiscountPercent($data['discount_percent'] ?? 0);
+
         $proposal = new Proposal(
             id: null,
             clientId: $data['client_id'],
@@ -73,7 +75,7 @@ class ProposalService
             parentId: null,
             status: ProposalStatus::Draft,
             validUntil: $data['valid_until'] ?? null,
-            discountPercent: (float) ($data['discount_percent'] ?? 0),
+            discountPercent: $discountPercent,
             notes: $data['notes'] ?? null
         );
 
@@ -92,6 +94,10 @@ class ProposalService
             throw new InvalidArgumentException('Proposta não pode ser editada');
         }
 
+        $discountPercent = array_key_exists('discount_percent', $data)
+            ? $this->parseDiscountPercent($data['discount_percent'])
+            : $proposal->getDiscountPercent();
+
         $updated = new Proposal(
             id: $id,
             clientId: $proposal->getClientId(),
@@ -99,7 +105,7 @@ class ProposalService
             parentId: $proposal->getParentId(),
             status: $proposal->getStatus(),
             validUntil: $data['valid_until'] ?? $proposal->getValidUntil(),
-            discountPercent: (float) ($data['discount_percent'] ?? $proposal->getDiscountPercent()),
+            discountPercent: $discountPercent,
             notes: $data['notes'] ?? $proposal->getNotes(),
             createdAt: $proposal->getCreatedAt()
         );
@@ -172,6 +178,11 @@ class ProposalService
         }
 
         $items = $this->itemRepository->findByProposalId($id);
+
+        if (empty($items)) {
+            throw new InvalidArgumentException('Proposta precisa ter pelo menos um item');
+        }
+
         $totals = $this->calculateTotals($items, $proposal->getDiscountPercent());
 
         $updated = new Proposal(
@@ -186,15 +197,27 @@ class ProposalService
             createdAt: $proposal->getCreatedAt()
         );
 
-        $this->proposalRepository->update($updated);
+        $this->pdo->beginTransaction();
 
-        $contract = new Contract(
-            id: null,
-            proposalId: $id,
-            totalAmount: $totals['total']
-        );
+        try {
+            $this->proposalRepository->update($updated);
 
-        return $this->contractRepository->create($contract);
+            $contract = new Contract(
+                id: null,
+                proposalId: $id,
+                totalAmount: $totals['total']
+            );
+
+            $created = $this->contractRepository->create($contract);
+
+            $this->pdo->commit();
+
+            return $created;
+        } catch (Throwable $e) {
+            $this->pdo->rollBack();
+
+            throw $e;
+        }
     }
 
     public function reject(string $id): Proposal
@@ -287,20 +310,16 @@ class ProposalService
             throw new InvalidArgumentException('Proposta não pode ser editada');
         }
 
-        if (empty($data['description'])) {
-            throw new InvalidArgumentException('Descrição é obrigatória');
-        }
-
-        if (!isset($data['unit_price']) || $data['unit_price'] <= 0) {
-            throw new InvalidArgumentException('Preço unitário inválido');
-        }
+        $description = $this->parseDescription($data['description'] ?? null);
+        $quantity = $this->parseQuantity($data['quantity'] ?? 1);
+        $unitPrice = $this->parseUnitPrice($data['unit_price'] ?? null);
 
         $item = new ProposalItem(
             id: null,
             proposalId: $proposalId,
-            description: $data['description'],
-            quantity: (int) ($data['quantity'] ?? 1),
-            unitPrice: (float) $data['unit_price']
+            description: $description,
+            quantity: $quantity,
+            unitPrice: $unitPrice
         );
 
         return $this->itemRepository->create($item);
@@ -324,12 +343,22 @@ class ProposalService
             throw new InvalidArgumentException('Item não encontrado');
         }
 
+        $description = array_key_exists('description', $data)
+            ? $this->parseDescription($data['description'])
+            : $item->getDescription();
+        $quantity = array_key_exists('quantity', $data)
+            ? $this->parseQuantity($data['quantity'])
+            : $item->getQuantity();
+        $unitPrice = array_key_exists('unit_price', $data)
+            ? $this->parseUnitPrice($data['unit_price'])
+            : $item->getUnitPrice();
+
         $updated = new ProposalItem(
             id: $itemId,
             proposalId: $proposalId,
-            description: $data['description'] ?? $item->getDescription(),
-            quantity: (int) ($data['quantity'] ?? $item->getQuantity()),
-            unitPrice: (float) ($data['unit_price'] ?? $item->getUnitPrice()),
+            description: $description,
+            quantity: $quantity,
+            unitPrice: $unitPrice,
             createdAt: $item->getCreatedAt()
         );
 
@@ -359,19 +388,82 @@ class ProposalService
 
     private function calculateTotals(array $items, float $discountPercent): array
     {
-        $subtotal = 0;
+        $subtotalCents = 0;
 
         foreach ($items as $item) {
-            $subtotal += $item->getSubtotal();
+            $subtotalCents += $this->moneyToCents($item->getUnitPrice()) * $item->getQuantity();
         }
 
-        $discount = $subtotal * ($discountPercent / 100);
-        $total = $subtotal - $discount;
+        $discountBasisPoints = (int) round($discountPercent * 100);
+        $discountCents = intdiv(($subtotalCents * $discountBasisPoints) + 5000, 10000);
+        $totalCents = $subtotalCents - $discountCents;
 
         return [
-            'subtotal' => round($subtotal, 2),
-            'discount' => round($discount, 2),
-            'total' => round($total, 2),
+            'subtotal' => $this->centsToMoney($subtotalCents),
+            'discount' => $this->centsToMoney($discountCents),
+            'total' => $this->centsToMoney($totalCents),
         ];
+    }
+
+    private function parseDiscountPercent(mixed $value): float
+    {
+        if (!is_numeric($value)) {
+            throw new InvalidArgumentException('Percentual de desconto inválido');
+        }
+
+        $discountPercent = round((float) $value, 2);
+
+        if ($discountPercent < 0 || $discountPercent > 100) {
+            throw new InvalidArgumentException('Percentual de desconto inválido');
+        }
+
+        return $discountPercent;
+    }
+
+    private function parseDescription(mixed $value): string
+    {
+        $description = is_string($value) ? trim($value) : '';
+
+        if ($description === '') {
+            throw new InvalidArgumentException('Descrição é obrigatória');
+        }
+
+        return $description;
+    }
+
+    private function parseQuantity(mixed $value): int
+    {
+        $quantity = filter_var($value, FILTER_VALIDATE_INT);
+
+        if ($quantity === false || $quantity < 1) {
+            throw new InvalidArgumentException('Quantidade inválida');
+        }
+
+        return $quantity;
+    }
+
+    private function parseUnitPrice(mixed $value): float
+    {
+        if (!is_numeric($value)) {
+            throw new InvalidArgumentException('Preço unitário inválido');
+        }
+
+        $unitPrice = round((float) $value, 2);
+
+        if ($unitPrice <= 0) {
+            throw new InvalidArgumentException('Preço unitário inválido');
+        }
+
+        return $unitPrice;
+    }
+
+    private function moneyToCents(float $amount): int
+    {
+        return (int) round($amount * 100);
+    }
+
+    private function centsToMoney(int $cents): float
+    {
+        return round($cents / 100, 2);
     }
 }

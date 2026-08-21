@@ -48,7 +48,9 @@ class ProposalItem
 
     public function getSubtotal(): float
     {
-        return round($this->quantity * $this->unitPrice, 2);
+        $unitPriceCents = (int) round($this->unitPrice * 100);
+
+        return round(($unitPriceCents * $this->quantity) / 100, 2);
     }
 
     public function toArray(): array
