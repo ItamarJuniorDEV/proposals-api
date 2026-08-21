@@ -5,14 +5,17 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh-lock:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout PR branch
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -30,9 +33,13 @@ jobs:
       - name: Audit refreshed lockfile
         run: composer audit --locked --no-interaction
 
-      - name: Upload refreshed lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: refreshed-composer-lock
-          path: composer.lock
-          if-no-files-found: error
+      - name: Commit refreshed lockfile
+        run: |
+          if git diff --quiet -- composer.lock; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add composer.lock
+          git commit -m "chore: atualizar dependências de teste"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
