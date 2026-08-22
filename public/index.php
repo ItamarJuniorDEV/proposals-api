@@ -8,6 +8,7 @@ use App\Controllers\ClientController;
 use App\Controllers\ContractController;
 use App\Controllers\ProposalController;
 use App\Http\Routes\Router;
+use App\Http\Security\BearerTokenGuard;
 use App\Infrastructure\Database\Connection;
 use App\Infrastructure\Persistence\ClientRepository;
 use App\Infrastructure\Persistence\ContractRepository;
@@ -30,6 +31,35 @@ if (is_file($envPath)) {
 }
 
 header('Content-Type: application/json; charset=utf-8');
+
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
+
+if ($method === 'GET' && $path === '/') {
+    echo json_encode(['status' => 'ok', 'api' => 'proposals'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$configuredToken = $_ENV['API_TOKEN'] ?? '';
+$guard = new BearerTokenGuard(is_string($configuredToken) ? $configuredToken : '');
+
+if (!$guard->isConfigured()) {
+    error_log('security.api_token_not_configured');
+    http_response_code(503);
+    echo json_encode(['error' => 'Serviço indisponível'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$authorizationHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
+$authorizationHeader = is_string($authorizationHeader) ? $authorizationHeader : null;
+
+if (!$guard->allows($authorizationHeader)) {
+    error_log('security.auth_failed');
+    http_response_code(401);
+    header('WWW-Authenticate: Bearer');
+    echo json_encode(['error' => 'Não autorizado'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 /** @return array<string, mixed> */
 function readJsonBody(): array
@@ -95,8 +125,6 @@ $contractController = new ContractController($contractService);
 
 $router = new Router();
 
-$router->get('/', fn () => ['status' => 'ok', 'api' => 'proposals']);
-
 $router->get('/clients', fn () => $clientController->index());
 $router->get('/clients/{id}', fn ($id) => $clientController->show($id));
 $router->post('/clients', fn () => $clientController->store(readJsonBody()));
@@ -119,9 +147,6 @@ $router->delete('/proposals/{id}/items/{itemId}', fn ($id, $itemId) => $proposal
 
 $router->get('/contracts', fn () => $contractController->index());
 $router->get('/contracts/{id}', fn ($id) => $contractController->show($id));
-
-$method = $_SERVER['REQUEST_METHOD'];
-$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '/';
 
 try {
     $response = $router->resolve($method, $path);
