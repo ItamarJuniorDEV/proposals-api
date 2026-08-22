@@ -14,6 +14,7 @@ class ClientRepository implements ClientRepositoryInterface
     {
     }
 
+    /** @return list<Client> */
     public function findAll(): array
     {
         $stmt = $this->pdo->query("SELECT * FROM clients ORDER BY name");
@@ -90,16 +91,17 @@ class ClientRepository implements ClientRepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
+    /** @param array<string, mixed> $row */
     private function toEntity(array $row): Client
     {
         return new Client(
-            id: $row['id'],
-            name: $row['name'],
-            email: $row['email'],
-            phone: $row['phone'],
-            company: $row['company'],
-            createdAt: $row['created_at'],
-            updatedAt: $row['updated_at']
+            id: (string) $row['id'],
+            name: (string) $row['name'],
+            email: (string) $row['email'],
+            phone: $row['phone'] !== null ? (string) $row['phone'] : null,
+            company: $row['company'] !== null ? (string) $row['company'] : null,
+            createdAt: (string) $row['created_at'],
+            updatedAt: (string) $row['updated_at']
         );
     }
 }

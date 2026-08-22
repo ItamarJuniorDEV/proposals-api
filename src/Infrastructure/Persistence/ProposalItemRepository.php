@@ -14,6 +14,7 @@ class ProposalItemRepository implements ProposalItemRepositoryInterface
     {
     }
 
+    /** @return list<ProposalItem> */
     public function findByProposalId(string $proposalId): array
     {
         $stmt = $this->pdo->prepare("SELECT * FROM proposal_items WHERE proposal_id = :proposal_id ORDER BY created_at");
@@ -87,15 +88,16 @@ class ProposalItemRepository implements ProposalItemRepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
+    /** @param array<string, mixed> $row */
     private function toEntity(array $row): ProposalItem
     {
         return new ProposalItem(
-            id: $row['id'],
-            proposalId: $row['proposal_id'],
-            description: $row['description'],
+            id: (string) $row['id'],
+            proposalId: (string) $row['proposal_id'],
+            description: (string) $row['description'],
             quantity: (int) $row['quantity'],
             unitPrice: (float) $row['unit_price'],
-            createdAt: $row['created_at']
+            createdAt: (string) $row['created_at']
         );
     }
 }

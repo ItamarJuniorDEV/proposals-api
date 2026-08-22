@@ -15,6 +15,7 @@ class ProposalRepository implements ProposalRepositoryInterface
     {
     }
 
+    /** @return list<Proposal> */
     public function findAll(): array
     {
         $stmt = $this->pdo->query("SELECT * FROM proposals ORDER BY created_at DESC");
@@ -32,6 +33,7 @@ class ProposalRepository implements ProposalRepositoryInterface
         return $row ? $this->toEntity($row) : null;
     }
 
+    /** @return list<Proposal> */
     public function findByClientId(string $clientId): array
     {
         $stmt = $this->pdo->prepare("SELECT * FROM proposals WHERE client_id = :client_id ORDER BY created_at DESC");
@@ -94,19 +96,20 @@ class ProposalRepository implements ProposalRepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
+    /** @param array<string, mixed> $row */
     private function toEntity(array $row): Proposal
     {
         return new Proposal(
-            id: $row['id'],
-            clientId: $row['client_id'],
+            id: (string) $row['id'],
+            clientId: (string) $row['client_id'],
             version: (int) $row['version'],
-            parentId: $row['parent_id'],
-            status: ProposalStatus::from($row['status']),
-            validUntil: $row['valid_until'],
+            parentId: $row['parent_id'] !== null ? (string) $row['parent_id'] : null,
+            status: ProposalStatus::from((string) $row['status']),
+            validUntil: $row['valid_until'] !== null ? (string) $row['valid_until'] : null,
             discountPercent: (float) $row['discount_percent'],
-            notes: $row['notes'],
-            createdAt: $row['created_at'],
-            updatedAt: $row['updated_at']
+            notes: $row['notes'] !== null ? (string) $row['notes'] : null,
+            createdAt: (string) $row['created_at'],
+            updatedAt: (string) $row['updated_at']
         );
     }
 }

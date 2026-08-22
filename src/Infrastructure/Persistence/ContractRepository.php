@@ -14,6 +14,7 @@ class ContractRepository implements ContractRepositoryInterface
     {
     }
 
+    /** @return list<Contract> */
     public function findAll(): array
     {
         $stmt = $this->pdo->query("SELECT * FROM contracts ORDER BY created_at DESC");
@@ -56,14 +57,15 @@ class ContractRepository implements ContractRepositoryInterface
         return $this->toEntity($stmt->fetch());
     }
 
+    /** @param array<string, mixed> $row */
     private function toEntity(array $row): Contract
     {
         return new Contract(
-            id: $row['id'],
-            proposalId: $row['proposal_id'],
+            id: (string) $row['id'],
+            proposalId: (string) $row['proposal_id'],
             totalAmount: (float) $row['total_amount'],
-            approvedAt: $row['approved_at'],
-            createdAt: $row['created_at']
+            approvedAt: (string) $row['approved_at'],
+            createdAt: (string) $row['created_at']
         );
     }
 }
