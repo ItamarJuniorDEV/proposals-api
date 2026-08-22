@@ -40,6 +40,7 @@ class Contract
         return $this->createdAt;
     }
 
+    /** @return array{id: ?string, proposal_id: string, total_amount: float, approved_at: ?string, created_at: ?string} */
     public function toArray(): array
     {
         return [

@@ -81,6 +81,7 @@ class Proposal
         return strtotime($this->validUntil) < strtotime('today');
     }
 
+    /** @return array{id: ?string, client_id: string, version: int, parent_id: ?string, status: string, valid_until: ?string, discount_percent: float, notes: ?string, created_at: ?string, updated_at: ?string} */
     public function toArray(): array
     {
         return [

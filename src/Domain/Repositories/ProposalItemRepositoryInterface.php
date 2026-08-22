@@ -8,10 +8,16 @@ use App\Domain\Entities\ProposalItem;
 
 interface ProposalItemRepositoryInterface
 {
+    /** @return list<ProposalItem> */
     public function findByProposalId(string $proposalId): array;
+
     public function findById(string $id): ?ProposalItem;
+
     public function create(ProposalItem $item): ProposalItem;
+
     public function update(ProposalItem $item): ProposalItem;
+
     public function delete(string $id): bool;
+
     public function deleteByProposalId(string $proposalId): bool;
 }

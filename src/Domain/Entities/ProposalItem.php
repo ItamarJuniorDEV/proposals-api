@@ -53,6 +53,7 @@ class ProposalItem
         return round(($unitPriceCents * $this->quantity) / 100, 2);
     }
 
+    /** @return array{id: ?string, proposal_id: string, description: string, quantity: int, unit_price: float, subtotal: float, created_at: ?string} */
     public function toArray(): array
     {
         return [

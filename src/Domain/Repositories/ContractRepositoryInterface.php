@@ -8,8 +8,12 @@ use App\Domain\Entities\Contract;
 
 interface ContractRepositoryInterface
 {
+    /** @return list<Contract> */
     public function findAll(): array;
+
     public function findById(string $id): ?Contract;
+
     public function findByProposalId(string $proposalId): ?Contract;
+
     public function create(Contract $contract): Contract;
 }
