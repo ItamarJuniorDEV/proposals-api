@@ -44,11 +44,12 @@ class ProposalServiceTest extends TestCase
 
     public function testCreateProposalSuccess(): void
     {
-        $client = new Client('client-123', 'João', 'joao@email.com', null, null);
+        $clientId = '123e4567-e89b-12d3-a456-426614174000';
+        $client = new Client($clientId, 'João', 'joao@email.com', null, null);
 
         $expectedProposal = new Proposal(
             id: 'proposal-123',
-            clientId: 'client-123',
+            clientId: $clientId,
             version: 1,
             parentId: null,
             status: ProposalStatus::Draft,
@@ -60,7 +61,7 @@ class ProposalServiceTest extends TestCase
         $this->clientRepository->method('findById')->willReturn($client);
         $this->proposalRepository->method('create')->willReturn($expectedProposal);
 
-        $proposal = $this->service->create(['client_id' => 'client-123']);
+        $proposal = $this->service->create(['client_id' => $clientId]);
 
         $this->assertEquals('proposal-123', $proposal->getId());
         $this->assertEquals(ProposalStatus::Draft, $proposal->getStatus());
@@ -81,7 +82,7 @@ class ProposalServiceTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Cliente não encontrado');
 
-        $this->service->create(['client_id' => 'uuid-inexistente']);
+        $this->service->create(['client_id' => '123e4567-e89b-12d3-a456-426614174999']);
     }
 
     public function testSendProposalSuccess(): void

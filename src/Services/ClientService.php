@@ -28,31 +28,22 @@ class ClientService
     /** @param array<string, mixed> $data */
     public function create(array $data): Client
     {
-        if (empty($data['name'])) {
-            throw new InvalidArgumentException('Nome é obrigatório');
-        }
+        $name = $this->requiredString($data['name'] ?? null, 255, 'Nome é obrigatório', 'Nome inválido');
+        $email = $this->parseEmail($data['email'] ?? null);
+        $phone = $this->optionalString($data['phone'] ?? null, 20, 'Telefone inválido');
+        $company = $this->optionalString($data['company'] ?? null, 255, 'Empresa inválida');
 
-        if (empty($data['email'])) {
-            throw new InvalidArgumentException('Email é obrigatório');
-        }
-
-        if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-            throw new InvalidArgumentException('Email inválido');
-        }
-
-        if ($this->repository->findByEmail($data['email'])) {
+        if ($this->repository->findByEmail($email)) {
             throw new InvalidArgumentException('Email já cadastrado');
         }
 
-        $client = new Client(
+        return $this->repository->create(new Client(
             id: null,
-            name: $data['name'],
-            email: $data['email'],
-            phone: $data['phone'] ?? null,
-            company: $data['company'] ?? null
-        );
-
-        return $this->repository->create($client);
+            name: $name,
+            email: $email,
+            phone: $phone,
+            company: $company
+        ));
     }
 
     /** @param array<string, mixed> $data */
@@ -64,28 +55,31 @@ class ClientService
             throw new InvalidArgumentException('Cliente não encontrado');
         }
 
-        $email = $data['email'] ?? $client->getEmail();
+        $name = array_key_exists('name', $data)
+            ? $this->requiredString($data['name'], 255, 'Nome é obrigatório', 'Nome inválido')
+            : $client->getName();
+        $email = array_key_exists('email', $data)
+            ? $this->parseEmail($data['email'])
+            : $client->getEmail();
+        $phone = array_key_exists('phone', $data)
+            ? $this->optionalString($data['phone'], 20, 'Telefone inválido')
+            : $client->getPhone();
+        $company = array_key_exists('company', $data)
+            ? $this->optionalString($data['company'], 255, 'Empresa inválida')
+            : $client->getCompany();
 
-        if (isset($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-            throw new InvalidArgumentException('Email inválido');
+        if ($email !== $client->getEmail() && $this->repository->findByEmail($email)) {
+            throw new InvalidArgumentException('Email já cadastrado');
         }
 
-        if (isset($data['email']) && $data['email'] !== $client->getEmail()) {
-            if ($this->repository->findByEmail($data['email'])) {
-                throw new InvalidArgumentException('Email já cadastrado');
-            }
-        }
-
-        $updated = new Client(
+        return $this->repository->update(new Client(
             id: $id,
-            name: $data['name'] ?? $client->getName(),
+            name: $name,
             email: $email,
-            phone: $data['phone'] ?? $client->getPhone(),
-            company: $data['company'] ?? $client->getCompany(),
+            phone: $phone,
+            company: $company,
             createdAt: $client->getCreatedAt()
-        );
-
-        return $this->repository->update($updated);
+        ));
     }
 
     public function delete(string $id): void
@@ -97,5 +91,58 @@ class ClientService
         }
 
         $this->repository->delete($id);
+    }
+
+    private function parseEmail(mixed $value): string
+    {
+        $email = $this->requiredString($value, 255, 'Email é obrigatório', 'Email inválido');
+
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            throw new InvalidArgumentException('Email inválido');
+        }
+
+        return $email;
+    }
+
+    private function requiredString(mixed $value, int $maxLength, string $emptyMessage, string $invalidMessage): string
+    {
+        if (!is_string($value)) {
+            throw new InvalidArgumentException($emptyMessage);
+        }
+
+        $value = trim($value);
+
+        if ($value === '') {
+            throw new InvalidArgumentException($emptyMessage);
+        }
+
+        if (strlen($value) > $maxLength) {
+            throw new InvalidArgumentException($invalidMessage);
+        }
+
+        return $value;
+    }
+
+    private function optionalString(mixed $value, int $maxLength, string $invalidMessage): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (!is_string($value)) {
+            throw new InvalidArgumentException($invalidMessage);
+        }
+
+        $value = trim($value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (strlen($value) > $maxLength) {
+            throw new InvalidArgumentException($invalidMessage);
+        }
+
+        return $value;
     }
 }
