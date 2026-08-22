@@ -8,7 +8,7 @@ use App\Services\ContractService;
 
 class ContractController
 {
-    public function __construct(private ContractService $service)
+    public function __construct(private readonly ContractService $service)
     {
     }
 

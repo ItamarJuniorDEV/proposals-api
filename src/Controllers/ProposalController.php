@@ -9,7 +9,7 @@ use InvalidArgumentException;
 
 class ProposalController
 {
-    public function __construct(private ProposalService $service)
+    public function __construct(private readonly ProposalService $service)
     {
     }
 

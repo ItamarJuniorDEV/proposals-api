@@ -7,12 +7,12 @@ namespace App\Domain\Entities;
 class ProposalItem
 {
     public function __construct(
-        private ?string $id,
-        private string $proposalId,
-        private string $description,
-        private int $quantity,
-        private float $unitPrice,
-        private ?string $createdAt = null
+        private readonly ?string $id,
+        private readonly string $proposalId,
+        private readonly string $description,
+        private readonly int $quantity,
+        private readonly float $unitPrice,
+        private readonly ?string $createdAt = null
     ) {
     }
 

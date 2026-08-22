@@ -9,16 +9,16 @@ use App\Domain\Enums\ProposalStatus;
 class Proposal
 {
     public function __construct(
-        private ?string $id,
-        private string $clientId,
-        private int $version,
-        private ?string $parentId,
-        private ProposalStatus $status,
-        private ?string $validUntil,
-        private float $discountPercent,
-        private ?string $notes,
-        private ?string $createdAt = null,
-        private ?string $updatedAt = null
+        private readonly ?string $id,
+        private readonly string $clientId,
+        private readonly int $version,
+        private readonly ?string $parentId,
+        private readonly ProposalStatus $status,
+        private readonly ?string $validUntil,
+        private readonly float $discountPercent,
+        private readonly ?string $notes,
+        private readonly ?string $createdAt = null,
+        private readonly ?string $updatedAt = null
     ) {
     }
 

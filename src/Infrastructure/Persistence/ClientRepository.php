@@ -10,7 +10,7 @@ use PDO;
 
 class ClientRepository implements ClientRepositoryInterface
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private readonly PDO $pdo)
     {
     }
 
@@ -20,7 +20,7 @@ class ClientRepository implements ClientRepositoryInterface
         $stmt = $this->pdo->query("SELECT * FROM clients ORDER BY name");
         $rows = $stmt->fetchAll();
 
-        return array_map(fn ($row) => $this->toEntity($row), $rows);
+        return array_map($this->toEntity(...), $rows);
     }
 
     public function findById(string $id): ?Client

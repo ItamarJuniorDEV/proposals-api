@@ -19,11 +19,11 @@ use Throwable;
 class ProposalService
 {
     public function __construct(
-        private ProposalRepositoryInterface $proposalRepository,
-        private ProposalItemRepositoryInterface $itemRepository,
-        private ClientRepositoryInterface $clientRepository,
-        private ContractRepositoryInterface $contractRepository,
-        private PDO $pdo
+        private readonly ProposalRepositoryInterface $proposalRepository,
+        private readonly ProposalItemRepositoryInterface $itemRepository,
+        private readonly ClientRepositoryInterface $clientRepository,
+        private readonly ContractRepositoryInterface $contractRepository,
+        private readonly PDO $pdo
     ) {
     }
 

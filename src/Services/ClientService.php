@@ -10,7 +10,7 @@ use InvalidArgumentException;
 
 class ClientService
 {
-    public function __construct(private ClientRepositoryInterface $repository)
+    public function __construct(private readonly ClientRepositoryInterface $repository)
     {
     }
 

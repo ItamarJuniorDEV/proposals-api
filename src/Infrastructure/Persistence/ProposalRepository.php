@@ -11,7 +11,7 @@ use PDO;
 
 class ProposalRepository implements ProposalRepositoryInterface
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private readonly PDO $pdo)
     {
     }
 
@@ -21,7 +21,7 @@ class ProposalRepository implements ProposalRepositoryInterface
         $stmt = $this->pdo->query("SELECT * FROM proposals ORDER BY created_at DESC");
         $rows = $stmt->fetchAll();
 
-        return array_map(fn ($row) => $this->toEntity($row), $rows);
+        return array_map($this->toEntity(...), $rows);
     }
 
     public function findById(string $id): ?Proposal
@@ -40,7 +40,7 @@ class ProposalRepository implements ProposalRepositoryInterface
         $stmt->execute(['client_id' => $clientId]);
         $rows = $stmt->fetchAll();
 
-        return array_map(fn ($row) => $this->toEntity($row), $rows);
+        return array_map($this->toEntity(...), $rows);
     }
 
     public function create(Proposal $proposal): Proposal

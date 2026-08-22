@@ -10,7 +10,7 @@ use PDO;
 
 class ContractRepository implements ContractRepositoryInterface
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private readonly PDO $pdo)
     {
     }
 
@@ -20,7 +20,7 @@ class ContractRepository implements ContractRepositoryInterface
         $stmt = $this->pdo->query("SELECT * FROM contracts ORDER BY created_at DESC");
         $rows = $stmt->fetchAll();
 
-        return array_map(fn ($row) => $this->toEntity($row), $rows);
+        return array_map($this->toEntity(...), $rows);
     }
 
     public function findById(string $id): ?Contract

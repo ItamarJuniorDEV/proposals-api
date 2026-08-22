@@ -14,9 +14,9 @@ use App\Domain\Repositories\ProposalRepositoryInterface;
 class ContractService
 {
     public function __construct(
-        private ContractRepositoryInterface $contractRepository,
-        private ProposalRepositoryInterface $proposalRepository,
-        private ProposalItemRepositoryInterface $itemRepository
+        private readonly ContractRepositoryInterface $contractRepository,
+        private readonly ProposalRepositoryInterface $proposalRepository,
+        private readonly ProposalItemRepositoryInterface $itemRepository
     ) {
     }
 

@@ -10,7 +10,7 @@ use PDO;
 
 class ProposalItemRepository implements ProposalItemRepositoryInterface
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private readonly PDO $pdo)
     {
     }
 
@@ -21,7 +21,7 @@ class ProposalItemRepository implements ProposalItemRepositoryInterface
         $stmt->execute(['proposal_id' => $proposalId]);
         $rows = $stmt->fetchAll();
 
-        return array_map(fn ($row) => $this->toEntity($row), $rows);
+        return array_map($this->toEntity(...), $rows);
     }
 
     public function findById(string $id): ?ProposalItem

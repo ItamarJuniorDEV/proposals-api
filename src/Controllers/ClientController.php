@@ -9,7 +9,7 @@ use InvalidArgumentException;
 
 class ClientController
 {
-    public function __construct(private ClientService $service)
+    public function __construct(private readonly ClientService $service)
     {
     }
 
