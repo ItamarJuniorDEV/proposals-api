@@ -14,6 +14,7 @@ class ClientService
     {
     }
 
+    /** @return list<Client> */
     public function findAll(): array
     {
         return $this->repository->findAll();
@@ -24,6 +25,7 @@ class ClientService
         return $this->repository->findById($id);
     }
 
+    /** @param array<string, mixed> $data */
     public function create(array $data): Client
     {
         if (empty($data['name'])) {
@@ -53,6 +55,7 @@ class ClientService
         return $this->repository->create($client);
     }
 
+    /** @param array<string, mixed> $data */
     public function update(string $id, array $data): Client
     {
         $client = $this->repository->findById($id);

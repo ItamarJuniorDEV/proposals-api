@@ -27,11 +27,13 @@ class ProposalService
     ) {
     }
 
+    /** @return list<Proposal> */
     public function findAll(): array
     {
         return $this->proposalRepository->findAll();
     }
 
+    /** @return array{proposal: Proposal, items: list<ProposalItem>, totals: array{subtotal: float, discount: float, total: float}}|null */
     public function findById(string $id): ?array
     {
         $proposal = $this->proposalRepository->findById($id);
@@ -49,11 +51,13 @@ class ProposalService
         ];
     }
 
+    /** @return list<Proposal> */
     public function findByClientId(string $clientId): array
     {
         return $this->proposalRepository->findByClientId($clientId);
     }
 
+    /** @param array<string, mixed> $data */
     public function create(array $data): Proposal
     {
         if (empty($data['client_id'])) {
@@ -82,6 +86,7 @@ class ProposalService
         return $this->proposalRepository->create($proposal);
     }
 
+    /** @param array<string, mixed> $data */
     public function update(string $id, array $data): Proposal
     {
         $proposal = $this->proposalRepository->findById($id);
@@ -298,6 +303,7 @@ class ProposalService
         }
     }
 
+    /** @param array<string, mixed> $data */
     public function addItem(string $proposalId, array $data): ProposalItem
     {
         $proposal = $this->proposalRepository->findById($proposalId);
@@ -325,6 +331,7 @@ class ProposalService
         return $this->itemRepository->create($item);
     }
 
+    /** @param array<string, mixed> $data */
     public function updateItem(string $proposalId, string $itemId, array $data): ProposalItem
     {
         $proposal = $this->proposalRepository->findById($proposalId);
@@ -386,6 +393,10 @@ class ProposalService
         $this->itemRepository->delete($itemId);
     }
 
+    /**
+     * @param list<ProposalItem> $items
+     * @return array{subtotal: float, discount: float, total: float}
+     */
     private function calculateTotals(array $items, float $discountPercent): array
     {
         $subtotalCents = 0;
