@@ -13,6 +13,7 @@ class ClientController
     {
     }
 
+    /** @return list<array<string, mixed>> */
     public function index(): array
     {
         $clients = $this->service->findAll();
@@ -20,6 +21,7 @@ class ClientController
         return array_map(fn ($client) => $client->toArray(), $clients);
     }
 
+    /** @return array<string, mixed> */
     public function show(string $id): array
     {
         $client = $this->service->findById($id);
@@ -32,6 +34,10 @@ class ClientController
         return $client->toArray();
     }
 
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
     public function store(array $data): array
     {
         try {
@@ -44,6 +50,10 @@ class ClientController
         }
     }
 
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
     public function update(string $id, array $data): array
     {
         try {
@@ -55,6 +65,7 @@ class ClientController
         }
     }
 
+    /** @return array<string, string> */
     public function destroy(string $id): array
     {
         try {

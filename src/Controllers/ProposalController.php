@@ -13,6 +13,7 @@ class ProposalController
     {
     }
 
+    /** @return list<array<string, mixed>> */
     public function index(): array
     {
         $proposals = $this->service->findAll();
@@ -20,6 +21,7 @@ class ProposalController
         return array_map(fn ($proposal) => $proposal->toArray(), $proposals);
     }
 
+    /** @return array<string, mixed> */
     public function show(string $id): array
     {
         $result = $this->service->findById($id);
@@ -36,6 +38,10 @@ class ProposalController
         ];
     }
 
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
     public function store(array $data): array
     {
         try {
@@ -48,6 +54,10 @@ class ProposalController
         }
     }
 
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
     public function update(string $id, array $data): array
     {
         try {
@@ -59,6 +69,7 @@ class ProposalController
         }
     }
 
+    /** @return array<string, string> */
     public function destroy(string $id): array
     {
         try {
@@ -70,6 +81,7 @@ class ProposalController
         }
     }
 
+    /** @return array<string, mixed> */
     public function send(string $id): array
     {
         try {
@@ -81,6 +93,7 @@ class ProposalController
         }
     }
 
+    /** @return array<string, mixed> */
     public function approve(string $id): array
     {
         try {
@@ -93,6 +106,7 @@ class ProposalController
         }
     }
 
+    /** @return array<string, mixed> */
     public function reject(string $id): array
     {
         try {
@@ -104,6 +118,7 @@ class ProposalController
         }
     }
 
+    /** @return array<string, mixed> */
     public function revise(string $id): array
     {
         try {
@@ -116,6 +131,10 @@ class ProposalController
         }
     }
 
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
     public function addItem(string $id, array $data): array
     {
         try {
@@ -128,6 +147,10 @@ class ProposalController
         }
     }
 
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
     public function updateItem(string $id, string $itemId, array $data): array
     {
         try {
@@ -139,6 +162,7 @@ class ProposalController
         }
     }
 
+    /** @return array<string, string> */
     public function removeItem(string $id, string $itemId): array
     {
         try {

@@ -31,6 +31,7 @@ if (is_file($envPath)) {
 
 header('Content-Type: application/json; charset=utf-8');
 
+/** @return array<string, mixed> */
 function readJsonBody(): array
 {
     $raw = file_get_contents('php://input');
@@ -47,7 +48,22 @@ function readJsonBody(): array
         exit;
     }
 
-    return is_array($data) ? $data : [];
+    if (!is_array($data)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'JSON deve ser um objeto'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    foreach (array_keys($data) as $key) {
+        if (!is_string($key)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'JSON deve ser um objeto'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+
+    /** @var array<string, mixed> $data */
+    return $data;
 }
 
 $pdo = Connection::getInstance();

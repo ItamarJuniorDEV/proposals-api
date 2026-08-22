@@ -6,6 +6,7 @@ namespace App\Http\Routes;
 
 class Router
 {
+    /** @var array<string, array<string, callable>> */
     private array $routes = [];
 
     public function get(string $path, callable $handler): void
@@ -54,6 +55,7 @@ class Router
         return ['error' => 'Rota não encontrada'];
     }
 
+    /** @return list<string> */
     private function allowedMethodsForPath(string $path): array
     {
         $allowed = [];
@@ -75,6 +77,7 @@ class Router
         return $allowed;
     }
 
+    /** @return list<string>|null */
     private function matchRoute(string $route, string $path): ?array
     {
         $routeParts = explode('/', trim($route, '/'));
