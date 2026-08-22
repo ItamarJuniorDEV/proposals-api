@@ -1,0 +1,40 @@
+name: Update quality lock
+
+on:
+  push:
+    branches: [chore/proposals-quality-standard]
+
+permissions:
+  contents: write
+
+jobs:
+  update-lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: chore/proposals-quality-standard
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Update quality dependencies
+        run: composer update laravel/pint phpstan/phpstan phpunit/phpunit rector/rector --with-all-dependencies --no-progress --no-interaction
+
+      - name: Commit lockfile
+        run: |
+          if git diff --quiet -- composer.lock; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add composer.lock
+          git commit -m "chore: atualizar dependencias de qualidade"
+          git push
