@@ -18,6 +18,8 @@ use App\Services\ClientService;
 use App\Services\ContractService;
 use App\Services\ProposalService;
 
+const MAX_JSON_BODY_BYTES = 1048576;
+
 $envPath = __DIR__ . '/../.env';
 
 if (is_file($envPath)) {
@@ -31,6 +33,11 @@ if (is_file($envPath)) {
 }
 
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
+header('Referrer-Policy: no-referrer');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
@@ -64,9 +71,34 @@ if (!$guard->allows($authorizationHeader)) {
 /** @return array<string, mixed> */
 function readJsonBody(): array
 {
-    $raw = file_get_contents('php://input');
+    $contentLength = $_SERVER['CONTENT_LENGTH'] ?? null;
 
-    if ($raw === false || trim($raw) === '') {
+    if (is_string($contentLength) && ctype_digit($contentLength) && (int) $contentLength > MAX_JSON_BODY_BYTES) {
+        http_response_code(413);
+        echo json_encode(['error' => 'Payload muito grande'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $stream = fopen('php://input', 'rb');
+
+    if ($stream === false) {
+        throw new RuntimeException('Não foi possível ler o corpo da requisição');
+    }
+
+    $raw = stream_get_contents($stream, MAX_JSON_BODY_BYTES + 1);
+    fclose($stream);
+
+    if ($raw === false) {
+        throw new RuntimeException('Não foi possível ler o corpo da requisição');
+    }
+
+    if (strlen($raw) > MAX_JSON_BODY_BYTES) {
+        http_response_code(413);
+        echo json_encode(['error' => 'Payload muito grande'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    if (trim($raw) === '') {
         return [];
     }
 
@@ -156,7 +188,8 @@ try {
     }
 
     echo json_encode($response, JSON_UNESCAPED_UNICODE);
-} catch (\Throwable) {
+} catch (\Throwable $e) {
+    error_log('request.failed exception='.$e::class);
     http_response_code(500);
     echo json_encode(['error' => 'Erro interno'], JSON_UNESCAPED_UNICODE);
 }
