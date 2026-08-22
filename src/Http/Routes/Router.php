@@ -90,8 +90,15 @@ class Router
         $params = [];
 
         foreach ($routeParts as $i => $part) {
-            if (preg_match('/^\{(\w+)\}$/', $part)) {
-                $params[] = $pathParts[$i];
+            if (preg_match('/^\{(\w+)(?::(\w+))?\}$/', $part, $matches) === 1) {
+                $constraint = $matches[2] ?? null;
+                $value = $pathParts[$i];
+
+                if (!$this->matchesConstraint($constraint, $value)) {
+                    return null;
+                }
+
+                $params[] = $value;
                 continue;
             }
 
@@ -101,5 +108,14 @@ class Router
         }
 
         return $params;
+    }
+
+    private function matchesConstraint(?string $constraint, string $value): bool
+    {
+        return match ($constraint) {
+            null => true,
+            'uuid' => preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1,
+            default => false,
+        };
     }
 }

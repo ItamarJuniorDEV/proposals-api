@@ -126,27 +126,27 @@ $contractController = new ContractController($contractService);
 $router = new Router();
 
 $router->get('/clients', fn () => $clientController->index());
-$router->get('/clients/{id}', fn ($id) => $clientController->show($id));
+$router->get('/clients/{id:uuid}', fn ($id) => $clientController->show($id));
 $router->post('/clients', fn () => $clientController->store(readJsonBody()));
-$router->put('/clients/{id}', fn ($id) => $clientController->update($id, readJsonBody()));
-$router->delete('/clients/{id}', fn ($id) => $clientController->destroy($id));
+$router->put('/clients/{id:uuid}', fn ($id) => $clientController->update($id, readJsonBody()));
+$router->delete('/clients/{id:uuid}', fn ($id) => $clientController->destroy($id));
 
 $router->get('/proposals', fn () => $proposalController->index());
-$router->get('/proposals/{id}', fn ($id) => $proposalController->show($id));
+$router->get('/proposals/{id:uuid}', fn ($id) => $proposalController->show($id));
 $router->post('/proposals', fn () => $proposalController->store(readJsonBody()));
-$router->put('/proposals/{id}', fn ($id) => $proposalController->update($id, readJsonBody()));
-$router->delete('/proposals/{id}', fn ($id) => $proposalController->destroy($id));
-$router->post('/proposals/{id}/send', fn ($id) => $proposalController->send($id));
-$router->post('/proposals/{id}/approve', fn ($id) => $proposalController->approve($id));
-$router->post('/proposals/{id}/reject', fn ($id) => $proposalController->reject($id));
-$router->post('/proposals/{id}/revise', fn ($id) => $proposalController->revise($id));
+$router->put('/proposals/{id:uuid}', fn ($id) => $proposalController->update($id, readJsonBody()));
+$router->delete('/proposals/{id:uuid}', fn ($id) => $proposalController->destroy($id));
+$router->post('/proposals/{id:uuid}/send', fn ($id) => $proposalController->send($id));
+$router->post('/proposals/{id:uuid}/approve', fn ($id) => $proposalController->approve($id));
+$router->post('/proposals/{id:uuid}/reject', fn ($id) => $proposalController->reject($id));
+$router->post('/proposals/{id:uuid}/revise', fn ($id) => $proposalController->revise($id));
 
-$router->post('/proposals/{id}/items', fn ($id) => $proposalController->addItem($id, readJsonBody()));
-$router->put('/proposals/{id}/items/{itemId}', fn ($id, $itemId) => $proposalController->updateItem($id, $itemId, readJsonBody()));
-$router->delete('/proposals/{id}/items/{itemId}', fn ($id, $itemId) => $proposalController->removeItem($id, $itemId));
+$router->post('/proposals/{id:uuid}/items', fn ($id) => $proposalController->addItem($id, readJsonBody()));
+$router->put('/proposals/{id:uuid}/items/{itemId:uuid}', fn ($id, $itemId) => $proposalController->updateItem($id, $itemId, readJsonBody()));
+$router->delete('/proposals/{id:uuid}/items/{itemId:uuid}', fn ($id, $itemId) => $proposalController->removeItem($id, $itemId));
 
 $router->get('/contracts', fn () => $contractController->index());
-$router->get('/contracts/{id}', fn ($id) => $contractController->show($id));
+$router->get('/contracts/{id:uuid}', fn ($id) => $contractController->show($id));
 
 try {
     $response = $router->resolve($method, $path);
