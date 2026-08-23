@@ -21,6 +21,8 @@ use RuntimeException;
 
 class ProposalServiceIntegrityTest extends TestCase
 {
+    private const string CLIENT_ID = '123e4567-e89b-12d3-a456-426614174000';
+
     private ProposalRepositoryInterface $proposalRepository;
     private ProposalItemRepositoryInterface $itemRepository;
     private ClientRepositoryInterface $clientRepository;
@@ -99,10 +101,12 @@ class ProposalServiceIntegrityTest extends TestCase
         $this->service->approve('proposal-123');
     }
 
-    public function testApproveRejectsDraftWithoutStartingTransaction(): void
+    public function testApproveRejectsDraftAndRollsBackTransaction(): void
     {
         $this->proposalRepository->method('findById')->willReturn($this->proposal(ProposalStatus::Draft));
-        $this->pdo->expects($this->never())->method('beginTransaction');
+        $this->pdo->expects($this->once())->method('beginTransaction')->willReturn(true);
+        $this->pdo->expects($this->never())->method('commit');
+        $this->pdo->expects($this->once())->method('rollBack')->willReturn(true);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Proposta não pode ser aprovada');
@@ -114,7 +118,9 @@ class ProposalServiceIntegrityTest extends TestCase
     {
         $this->proposalRepository->method('findById')->willReturn($this->proposal(ProposalStatus::Sent, '2030-12-31'));
         $this->itemRepository->method('findByProposalId')->willReturn([]);
-        $this->pdo->expects($this->never())->method('beginTransaction');
+        $this->pdo->expects($this->once())->method('beginTransaction')->willReturn(true);
+        $this->pdo->expects($this->never())->method('commit');
+        $this->pdo->expects($this->once())->method('rollBack')->willReturn(true);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Proposta precisa ter pelo menos um item');
@@ -132,13 +138,41 @@ class ProposalServiceIntegrityTest extends TestCase
         $this->service->reject('proposal-123');
     }
 
-    public function testReviseRejectsApprovedStateWithoutStartingTransaction(): void
+    public function testReviseRejectsApprovedStateAndRollsBackTransaction(): void
     {
         $this->proposalRepository->method('findById')->willReturn($this->proposal(ProposalStatus::Approved));
-        $this->pdo->expects($this->never())->method('beginTransaction');
+        $this->pdo->expects($this->once())->method('beginTransaction')->willReturn(true);
+        $this->pdo->expects($this->never())->method('commit');
+        $this->pdo->expects($this->once())->method('rollBack')->willReturn(true);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Proposta não pode ser revisada');
+
+        $this->service->revise('proposal-123');
+    }
+
+    public function testReviseRejectsWhenSourceAlreadyHasRevision(): void
+    {
+        $proposal = $this->proposal(ProposalStatus::Sent);
+        $revision = new Proposal(
+            id: 'proposal-456',
+            clientId: 'client-123',
+            version: 2,
+            parentId: 'proposal-123',
+            status: ProposalStatus::Draft,
+            validUntil: null,
+            discountPercent: 0,
+            notes: null
+        );
+
+        $this->proposalRepository->method('findById')->willReturn($proposal);
+        $this->proposalRepository->method('findRevisionByParentId')->willReturn($revision);
+        $this->pdo->expects($this->once())->method('beginTransaction')->willReturn(true);
+        $this->pdo->expects($this->never())->method('commit');
+        $this->pdo->expects($this->once())->method('rollBack')->willReturn(true);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Proposta já possui uma revisão');
 
         $this->service->revise('proposal-123');
     }
@@ -178,14 +212,14 @@ class ProposalServiceIntegrityTest extends TestCase
 
     public function testCreateRejectsDiscountAboveOneHundredPercent(): void
     {
-        $client = new Client('client-123', 'Cliente', 'cliente@example.com', null, null);
+        $client = new Client(self::CLIENT_ID, 'Cliente', 'cliente@example.com', null, null);
         $this->clientRepository->method('findById')->willReturn($client);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Percentual de desconto inválido');
 
         $this->service->create([
-            'client_id' => 'client-123',
+            'client_id' => self::CLIENT_ID,
             'discount_percent' => 100.01,
         ]);
     }

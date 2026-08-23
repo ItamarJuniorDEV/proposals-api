@@ -11,34 +11,56 @@ use PDO;
 
 class ProposalRepository implements ProposalRepositoryInterface
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private readonly PDO $pdo)
     {
     }
 
+    /** @return list<Proposal> */
     public function findAll(): array
     {
         $stmt = $this->pdo->query("SELECT * FROM proposals ORDER BY created_at DESC");
         $rows = $stmt->fetchAll();
 
-        return array_map(fn ($row) => $this->toEntity($row), $rows);
+        return array_map($this->toEntity(...), $rows);
     }
 
-    public function findById(string $id): ?Proposal
+    public function findById(string $id, bool $forUpdate = false): ?Proposal
     {
-        $stmt = $this->pdo->prepare("SELECT * FROM proposals WHERE id = :id");
+        $sql = 'SELECT * FROM proposals WHERE id = :id';
+
+        if ($forUpdate) {
+            $sql .= ' FOR UPDATE';
+        }
+
+        $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['id' => $id]);
         $row = $stmt->fetch();
 
         return $row ? $this->toEntity($row) : null;
     }
 
+    public function findRevisionByParentId(string $parentId): ?Proposal
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT * FROM proposals
+            WHERE parent_id = :parent_id
+            ORDER BY version DESC
+            LIMIT 1
+        ");
+        $stmt->execute(['parent_id' => $parentId]);
+        $row = $stmt->fetch();
+
+        return $row ? $this->toEntity($row) : null;
+    }
+
+    /** @return list<Proposal> */
     public function findByClientId(string $clientId): array
     {
         $stmt = $this->pdo->prepare("SELECT * FROM proposals WHERE client_id = :client_id ORDER BY created_at DESC");
         $stmt->execute(['client_id' => $clientId]);
         $rows = $stmt->fetchAll();
 
-        return array_map(fn ($row) => $this->toEntity($row), $rows);
+        return array_map($this->toEntity(...), $rows);
     }
 
     public function create(Proposal $proposal): Proposal
@@ -94,19 +116,20 @@ class ProposalRepository implements ProposalRepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
+    /** @param array<string, mixed> $row */
     private function toEntity(array $row): Proposal
     {
         return new Proposal(
-            id: $row['id'],
-            clientId: $row['client_id'],
+            id: (string) $row['id'],
+            clientId: (string) $row['client_id'],
             version: (int) $row['version'],
-            parentId: $row['parent_id'],
-            status: ProposalStatus::from($row['status']),
-            validUntil: $row['valid_until'],
+            parentId: $row['parent_id'] !== null ? (string) $row['parent_id'] : null,
+            status: ProposalStatus::from((string) $row['status']),
+            validUntil: $row['valid_until'] !== null ? (string) $row['valid_until'] : null,
             discountPercent: (float) $row['discount_percent'],
-            notes: $row['notes'],
-            createdAt: $row['created_at'],
-            updatedAt: $row['updated_at']
+            notes: $row['notes'] !== null ? (string) $row['notes'] : null,
+            createdAt: (string) $row['created_at'],
+            updatedAt: (string) $row['updated_at']
         );
     }
 }

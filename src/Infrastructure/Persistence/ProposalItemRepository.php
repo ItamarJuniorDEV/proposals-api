@@ -10,17 +10,18 @@ use PDO;
 
 class ProposalItemRepository implements ProposalItemRepositoryInterface
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private readonly PDO $pdo)
     {
     }
 
+    /** @return list<ProposalItem> */
     public function findByProposalId(string $proposalId): array
     {
         $stmt = $this->pdo->prepare("SELECT * FROM proposal_items WHERE proposal_id = :proposal_id ORDER BY created_at");
         $stmt->execute(['proposal_id' => $proposalId]);
         $rows = $stmt->fetchAll();
 
-        return array_map(fn ($row) => $this->toEntity($row), $rows);
+        return array_map($this->toEntity(...), $rows);
     }
 
     public function findById(string $id): ?ProposalItem
@@ -87,15 +88,16 @@ class ProposalItemRepository implements ProposalItemRepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
+    /** @param array<string, mixed> $row */
     private function toEntity(array $row): ProposalItem
     {
         return new ProposalItem(
-            id: $row['id'],
-            proposalId: $row['proposal_id'],
-            description: $row['description'],
+            id: (string) $row['id'],
+            proposalId: (string) $row['proposal_id'],
+            description: (string) $row['description'],
             quantity: (int) $row['quantity'],
             unitPrice: (float) $row['unit_price'],
-            createdAt: $row['created_at']
+            createdAt: (string) $row['created_at']
         );
     }
 }

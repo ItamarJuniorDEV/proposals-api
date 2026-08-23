@@ -8,10 +8,11 @@ use App\Services\ContractService;
 
 class ContractController
 {
-    public function __construct(private ContractService $service)
+    public function __construct(private readonly ContractService $service)
     {
     }
 
+    /** @return list<array<string, mixed>> */
     public function index(): array
     {
         $contracts = $this->service->findAll();
@@ -19,6 +20,7 @@ class ContractController
         return array_map(fn ($contract) => $contract->toArray(), $contracts);
     }
 
+    /** @return array<string, mixed> */
     public function show(string $id): array
     {
         $result = $this->service->findById($id);

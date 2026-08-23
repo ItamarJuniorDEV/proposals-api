@@ -10,16 +10,17 @@ use PDO;
 
 class ClientRepository implements ClientRepositoryInterface
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private readonly PDO $pdo)
     {
     }
 
+    /** @return list<Client> */
     public function findAll(): array
     {
         $stmt = $this->pdo->query("SELECT * FROM clients ORDER BY name");
         $rows = $stmt->fetchAll();
 
-        return array_map(fn ($row) => $this->toEntity($row), $rows);
+        return array_map($this->toEntity(...), $rows);
     }
 
     public function findById(string $id): ?Client
@@ -90,16 +91,17 @@ class ClientRepository implements ClientRepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
+    /** @param array<string, mixed> $row */
     private function toEntity(array $row): Client
     {
         return new Client(
-            id: $row['id'],
-            name: $row['name'],
-            email: $row['email'],
-            phone: $row['phone'],
-            company: $row['company'],
-            createdAt: $row['created_at'],
-            updatedAt: $row['updated_at']
+            id: (string) $row['id'],
+            name: (string) $row['name'],
+            email: (string) $row['email'],
+            phone: $row['phone'] !== null ? (string) $row['phone'] : null,
+            company: $row['company'] !== null ? (string) $row['company'] : null,
+            createdAt: (string) $row['created_at'],
+            updatedAt: (string) $row['updated_at']
         );
     }
 }

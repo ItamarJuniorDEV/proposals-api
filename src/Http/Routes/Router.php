@@ -6,6 +6,7 @@ namespace App\Http\Routes;
 
 class Router
 {
+    /** @var array<string, array<string, callable>> */
     private array $routes = [];
 
     public function get(string $path, callable $handler): void
@@ -54,6 +55,7 @@ class Router
         return ['error' => 'Rota não encontrada'];
     }
 
+    /** @return list<string> */
     private function allowedMethodsForPath(string $path): array
     {
         $allowed = [];
@@ -75,6 +77,7 @@ class Router
         return $allowed;
     }
 
+    /** @return list<string>|null */
     private function matchRoute(string $route, string $path): ?array
     {
         $routeParts = explode('/', trim($route, '/'));
@@ -87,8 +90,15 @@ class Router
         $params = [];
 
         foreach ($routeParts as $i => $part) {
-            if (preg_match('/^\{(\w+)\}$/', $part)) {
-                $params[] = $pathParts[$i];
+            if (preg_match('/^\{(\w+)(?::(\w+))?\}$/', $part, $matches) === 1) {
+                $constraint = $matches[2] ?? null;
+                $value = $pathParts[$i];
+
+                if (!$this->matchesConstraint($constraint, $value)) {
+                    return null;
+                }
+
+                $params[] = $value;
                 continue;
             }
 
@@ -98,5 +108,14 @@ class Router
         }
 
         return $params;
+    }
+
+    private function matchesConstraint(?string $constraint, string $value): bool
+    {
+        return match ($constraint) {
+            null => true,
+            'uuid' => preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1,
+            default => false,
+        };
     }
 }

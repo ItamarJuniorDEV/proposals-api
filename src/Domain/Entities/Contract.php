@@ -7,11 +7,11 @@ namespace App\Domain\Entities;
 class Contract
 {
     public function __construct(
-        private ?string $id,
-        private string $proposalId,
-        private float $totalAmount,
-        private ?string $approvedAt = null,
-        private ?string $createdAt = null
+        private readonly ?string $id,
+        private readonly string $proposalId,
+        private readonly float $totalAmount,
+        private readonly ?string $approvedAt = null,
+        private readonly ?string $createdAt = null
     ) {
     }
 
@@ -40,6 +40,7 @@ class Contract
         return $this->createdAt;
     }
 
+    /** @return array{id: ?string, proposal_id: string, total_amount: float, approved_at: ?string, created_at: ?string} */
     public function toArray(): array
     {
         return [

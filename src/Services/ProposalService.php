@@ -12,26 +12,34 @@ use App\Domain\Repositories\ClientRepositoryInterface;
 use App\Domain\Repositories\ContractRepositoryInterface;
 use App\Domain\Repositories\ProposalItemRepositoryInterface;
 use App\Domain\Repositories\ProposalRepositoryInterface;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use PDO;
 use Throwable;
 
 class ProposalService
 {
+    private const int MAX_NOTES_LENGTH = 5000;
+    private const int MAX_DESCRIPTION_LENGTH = 255;
+    private const int MAX_QUANTITY = 1000000;
+    private const float MAX_UNIT_PRICE = 99999999.99;
+
     public function __construct(
-        private ProposalRepositoryInterface $proposalRepository,
-        private ProposalItemRepositoryInterface $itemRepository,
-        private ClientRepositoryInterface $clientRepository,
-        private ContractRepositoryInterface $contractRepository,
-        private PDO $pdo
+        private readonly ProposalRepositoryInterface $proposalRepository,
+        private readonly ProposalItemRepositoryInterface $itemRepository,
+        private readonly ClientRepositoryInterface $clientRepository,
+        private readonly ContractRepositoryInterface $contractRepository,
+        private readonly PDO $pdo
     ) {
     }
 
+    /** @return list<Proposal> */
     public function findAll(): array
     {
         return $this->proposalRepository->findAll();
     }
 
+    /** @return array{proposal: Proposal, items: list<ProposalItem>, totals: array{subtotal: float, discount: float, total: float}}|null */
     public function findById(string $id): ?array
     {
         $proposal = $this->proposalRepository->findById($id);
@@ -49,220 +57,183 @@ class ProposalService
         ];
     }
 
+    /** @return list<Proposal> */
     public function findByClientId(string $clientId): array
     {
         return $this->proposalRepository->findByClientId($clientId);
     }
 
+    /** @param array<string, mixed> $data */
     public function create(array $data): Proposal
     {
-        if (empty($data['client_id'])) {
-            throw new InvalidArgumentException('Cliente é obrigatório');
-        }
-
-        $client = $this->clientRepository->findById($data['client_id']);
+        $clientId = $this->parseClientId($data['client_id'] ?? null);
+        $client = $this->clientRepository->findById($clientId);
 
         if (!$client) {
             throw new InvalidArgumentException('Cliente não encontrado');
         }
 
-        $discountPercent = $this->parseDiscountPercent($data['discount_percent'] ?? 0);
-
         $proposal = new Proposal(
             id: null,
-            clientId: $data['client_id'],
+            clientId: $clientId,
             version: 1,
             parentId: null,
             status: ProposalStatus::Draft,
-            validUntil: $data['valid_until'] ?? null,
-            discountPercent: $discountPercent,
-            notes: $data['notes'] ?? null
+            validUntil: $this->parseDate($data['valid_until'] ?? null),
+            discountPercent: $this->parseDiscountPercent($data['discount_percent'] ?? 0),
+            notes: $this->parseNotes($data['notes'] ?? null)
         );
 
         return $this->proposalRepository->create($proposal);
     }
 
+    /** @param array<string, mixed> $data */
     public function update(string $id, array $data): Proposal
     {
-        $proposal = $this->proposalRepository->findById($id);
+        return $this->transaction(function () use ($id, $data): Proposal {
+            $proposal = $this->editableLockedProposal($id);
+            $discountPercent = array_key_exists('discount_percent', $data)
+                ? $this->parseDiscountPercent($data['discount_percent'])
+                : $proposal->getDiscountPercent();
+            $validUntil = array_key_exists('valid_until', $data)
+                ? $this->parseDate($data['valid_until'])
+                : $proposal->getValidUntil();
+            $notes = array_key_exists('notes', $data)
+                ? $this->parseNotes($data['notes'])
+                : $proposal->getNotes();
 
-        if (!$proposal) {
-            throw new InvalidArgumentException('Proposta não encontrada');
-        }
-
-        if (!$proposal->getStatus()->canEdit()) {
-            throw new InvalidArgumentException('Proposta não pode ser editada');
-        }
-
-        $discountPercent = array_key_exists('discount_percent', $data)
-            ? $this->parseDiscountPercent($data['discount_percent'])
-            : $proposal->getDiscountPercent();
-
-        $updated = new Proposal(
-            id: $id,
-            clientId: $proposal->getClientId(),
-            version: $proposal->getVersion(),
-            parentId: $proposal->getParentId(),
-            status: $proposal->getStatus(),
-            validUntil: $data['valid_until'] ?? $proposal->getValidUntil(),
-            discountPercent: $discountPercent,
-            notes: $data['notes'] ?? $proposal->getNotes(),
-            createdAt: $proposal->getCreatedAt()
-        );
-
-        return $this->proposalRepository->update($updated);
+            return $this->proposalRepository->update(new Proposal(
+                id: $id,
+                clientId: $proposal->getClientId(),
+                version: $proposal->getVersion(),
+                parentId: $proposal->getParentId(),
+                status: $proposal->getStatus(),
+                validUntil: $validUntil,
+                discountPercent: $discountPercent,
+                notes: $notes,
+                createdAt: $proposal->getCreatedAt()
+            ));
+        });
     }
 
     public function delete(string $id): void
     {
-        $proposal = $this->proposalRepository->findById($id);
+        $this->transaction(function () use ($id): null {
+            $this->editableLockedProposal($id);
+            $this->proposalRepository->delete($id);
 
-        if (!$proposal) {
-            throw new InvalidArgumentException('Proposta não encontrada');
-        }
-
-        if (!$proposal->getStatus()->canEdit()) {
-            throw new InvalidArgumentException('Proposta não pode ser removida');
-        }
-
-        $this->proposalRepository->delete($id);
+            return null;
+        });
     }
 
     public function send(string $id): Proposal
     {
-        $proposal = $this->proposalRepository->findById($id);
+        return $this->transaction(function () use ($id): Proposal {
+            $proposal = $this->lockedProposal($id);
 
-        if (!$proposal) {
-            throw new InvalidArgumentException('Proposta não encontrada');
-        }
+            if (!$proposal->getStatus()->canSend()) {
+                throw new InvalidArgumentException('Proposta não pode ser enviada');
+            }
 
-        if (!$proposal->getStatus()->canSend()) {
-            throw new InvalidArgumentException('Proposta não pode ser enviada');
-        }
+            $items = $this->itemRepository->findByProposalId($id);
 
-        $items = $this->itemRepository->findByProposalId($id);
+            if ($items === []) {
+                throw new InvalidArgumentException('Proposta precisa ter pelo menos um item');
+            }
 
-        if (empty($items)) {
-            throw new InvalidArgumentException('Proposta precisa ter pelo menos um item');
-        }
-
-        $updated = new Proposal(
-            id: $id,
-            clientId: $proposal->getClientId(),
-            version: $proposal->getVersion(),
-            parentId: $proposal->getParentId(),
-            status: ProposalStatus::Sent,
-            validUntil: $proposal->getValidUntil(),
-            discountPercent: $proposal->getDiscountPercent(),
-            notes: $proposal->getNotes(),
-            createdAt: $proposal->getCreatedAt()
-        );
-
-        return $this->proposalRepository->update($updated);
+            return $this->proposalRepository->update(new Proposal(
+                id: $id,
+                clientId: $proposal->getClientId(),
+                version: $proposal->getVersion(),
+                parentId: $proposal->getParentId(),
+                status: ProposalStatus::Sent,
+                validUntil: $proposal->getValidUntil(),
+                discountPercent: $proposal->getDiscountPercent(),
+                notes: $proposal->getNotes(),
+                createdAt: $proposal->getCreatedAt()
+            ));
+        });
     }
 
     public function approve(string $id): Contract
     {
-        $proposal = $this->proposalRepository->findById($id);
+        return $this->transaction(function () use ($id): Contract {
+            $proposal = $this->lockedProposal($id);
 
-        if (!$proposal) {
-            throw new InvalidArgumentException('Proposta não encontrada');
-        }
+            if (!$proposal->getStatus()->canApprove()) {
+                throw new InvalidArgumentException('Proposta não pode ser aprovada');
+            }
 
-        if (!$proposal->getStatus()->canApprove()) {
-            throw new InvalidArgumentException('Proposta não pode ser aprovada');
-        }
+            if ($proposal->isExpired()) {
+                throw new InvalidArgumentException('Proposta expirada');
+            }
 
-        if ($proposal->isExpired()) {
-            throw new InvalidArgumentException('Proposta expirada');
-        }
+            $items = $this->itemRepository->findByProposalId($id);
 
-        $items = $this->itemRepository->findByProposalId($id);
+            if ($items === []) {
+                throw new InvalidArgumentException('Proposta precisa ter pelo menos um item');
+            }
 
-        if (empty($items)) {
-            throw new InvalidArgumentException('Proposta precisa ter pelo menos um item');
-        }
+            $totals = $this->calculateTotals($items, $proposal->getDiscountPercent());
+            $updated = new Proposal(
+                id: $id,
+                clientId: $proposal->getClientId(),
+                version: $proposal->getVersion(),
+                parentId: $proposal->getParentId(),
+                status: ProposalStatus::Approved,
+                validUntil: $proposal->getValidUntil(),
+                discountPercent: $proposal->getDiscountPercent(),
+                notes: $proposal->getNotes(),
+                createdAt: $proposal->getCreatedAt()
+            );
 
-        $totals = $this->calculateTotals($items, $proposal->getDiscountPercent());
-
-        $updated = new Proposal(
-            id: $id,
-            clientId: $proposal->getClientId(),
-            version: $proposal->getVersion(),
-            parentId: $proposal->getParentId(),
-            status: ProposalStatus::Approved,
-            validUntil: $proposal->getValidUntil(),
-            discountPercent: $proposal->getDiscountPercent(),
-            notes: $proposal->getNotes(),
-            createdAt: $proposal->getCreatedAt()
-        );
-
-        $this->pdo->beginTransaction();
-
-        try {
             $this->proposalRepository->update($updated);
 
-            $contract = new Contract(
+            return $this->contractRepository->create(new Contract(
                 id: null,
                 proposalId: $id,
                 totalAmount: $totals['total']
-            );
-
-            $created = $this->contractRepository->create($contract);
-
-            $this->pdo->commit();
-
-            return $created;
-        } catch (Throwable $e) {
-            $this->pdo->rollBack();
-
-            throw $e;
-        }
+            ));
+        });
     }
 
     public function reject(string $id): Proposal
     {
-        $proposal = $this->proposalRepository->findById($id);
+        return $this->transaction(function () use ($id): Proposal {
+            $proposal = $this->lockedProposal($id);
 
-        if (!$proposal) {
-            throw new InvalidArgumentException('Proposta não encontrada');
-        }
+            if (!$proposal->getStatus()->canReject()) {
+                throw new InvalidArgumentException('Proposta não pode ser rejeitada');
+            }
 
-        if (!$proposal->getStatus()->canReject()) {
-            throw new InvalidArgumentException('Proposta não pode ser rejeitada');
-        }
-
-        $updated = new Proposal(
-            id: $id,
-            clientId: $proposal->getClientId(),
-            version: $proposal->getVersion(),
-            parentId: $proposal->getParentId(),
-            status: ProposalStatus::Rejected,
-            validUntil: $proposal->getValidUntil(),
-            discountPercent: $proposal->getDiscountPercent(),
-            notes: $proposal->getNotes(),
-            createdAt: $proposal->getCreatedAt()
-        );
-
-        return $this->proposalRepository->update($updated);
+            return $this->proposalRepository->update(new Proposal(
+                id: $id,
+                clientId: $proposal->getClientId(),
+                version: $proposal->getVersion(),
+                parentId: $proposal->getParentId(),
+                status: ProposalStatus::Rejected,
+                validUntil: $proposal->getValidUntil(),
+                discountPercent: $proposal->getDiscountPercent(),
+                notes: $proposal->getNotes(),
+                createdAt: $proposal->getCreatedAt()
+            ));
+        });
     }
 
     public function revise(string $id): Proposal
     {
-        $proposal = $this->proposalRepository->findById($id);
+        return $this->transaction(function () use ($id): Proposal {
+            $proposal = $this->lockedProposal($id);
 
-        if (!$proposal) {
-            throw new InvalidArgumentException('Proposta não encontrada');
-        }
+            if (!$proposal->getStatus()->canRevise()) {
+                throw new InvalidArgumentException('Proposta não pode ser revisada');
+            }
 
-        if (!$proposal->getStatus()->canRevise()) {
-            throw new InvalidArgumentException('Proposta não pode ser revisada');
-        }
+            if ($this->proposalRepository->findRevisionByParentId($id)) {
+                throw new InvalidArgumentException('Proposta já possui uma revisão');
+            }
 
-        $this->pdo->beginTransaction();
-
-        try {
-            $newProposal = new Proposal(
+            $created = $this->proposalRepository->create(new Proposal(
                 id: null,
                 clientId: $proposal->getClientId(),
                 version: $proposal->getVersion() + 1,
@@ -271,127 +242,143 @@ class ProposalService
                 validUntil: null,
                 discountPercent: $proposal->getDiscountPercent(),
                 notes: $proposal->getNotes()
-            );
+            ));
 
-            $created = $this->proposalRepository->create($newProposal);
-
-            $items = $this->itemRepository->findByProposalId($id);
-
-            foreach ($items as $item) {
-                $newItem = new ProposalItem(
+            foreach ($this->itemRepository->findByProposalId($id) as $item) {
+                $this->itemRepository->create(new ProposalItem(
                     id: null,
                     proposalId: $created->getId(),
                     description: $item->getDescription(),
                     quantity: $item->getQuantity(),
                     unitPrice: $item->getUnitPrice()
-                );
-                $this->itemRepository->create($newItem);
+                ));
             }
 
-            $this->pdo->commit();
-
             return $created;
-        } catch (Throwable $e) {
-            $this->pdo->rollBack();
-
-            throw $e;
-        }
+        });
     }
 
+    /** @param array<string, mixed> $data */
     public function addItem(string $proposalId, array $data): ProposalItem
     {
-        $proposal = $this->proposalRepository->findById($proposalId);
+        return $this->transaction(function () use ($proposalId, $data): ProposalItem {
+            $this->editableLockedProposal($proposalId);
+            $description = $this->parseDescription($data['description'] ?? null);
+            $quantity = $this->parseQuantity($data['quantity'] ?? 1);
+            $unitPrice = $this->parseUnitPrice($data['unit_price'] ?? null);
 
-        if (!$proposal) {
-            throw new InvalidArgumentException('Proposta não encontrada');
-        }
-
-        if (!$proposal->getStatus()->canEdit()) {
-            throw new InvalidArgumentException('Proposta não pode ser editada');
-        }
-
-        $description = $this->parseDescription($data['description'] ?? null);
-        $quantity = $this->parseQuantity($data['quantity'] ?? 1);
-        $unitPrice = $this->parseUnitPrice($data['unit_price'] ?? null);
-
-        $item = new ProposalItem(
-            id: null,
-            proposalId: $proposalId,
-            description: $description,
-            quantity: $quantity,
-            unitPrice: $unitPrice
-        );
-
-        return $this->itemRepository->create($item);
+            return $this->itemRepository->create(new ProposalItem(
+                id: null,
+                proposalId: $proposalId,
+                description: $description,
+                quantity: $quantity,
+                unitPrice: $unitPrice
+            ));
+        });
     }
 
+    /** @param array<string, mixed> $data */
     public function updateItem(string $proposalId, string $itemId, array $data): ProposalItem
     {
-        $proposal = $this->proposalRepository->findById($proposalId);
+        return $this->transaction(function () use ($proposalId, $itemId, $data): ProposalItem {
+            $this->editableLockedProposal($proposalId);
+            $item = $this->itemRepository->findById($itemId);
 
-        if (!$proposal) {
-            throw new InvalidArgumentException('Proposta não encontrada');
-        }
+            if (!$item || $item->getProposalId() !== $proposalId) {
+                throw new InvalidArgumentException('Item não encontrado');
+            }
 
-        if (!$proposal->getStatus()->canEdit()) {
-            throw new InvalidArgumentException('Proposta não pode ser editada');
-        }
-
-        $item = $this->itemRepository->findById($itemId);
-
-        if (!$item || $item->getProposalId() !== $proposalId) {
-            throw new InvalidArgumentException('Item não encontrado');
-        }
-
-        $description = array_key_exists('description', $data)
-            ? $this->parseDescription($data['description'])
-            : $item->getDescription();
-        $quantity = array_key_exists('quantity', $data)
-            ? $this->parseQuantity($data['quantity'])
-            : $item->getQuantity();
-        $unitPrice = array_key_exists('unit_price', $data)
-            ? $this->parseUnitPrice($data['unit_price'])
-            : $item->getUnitPrice();
-
-        $updated = new ProposalItem(
-            id: $itemId,
-            proposalId: $proposalId,
-            description: $description,
-            quantity: $quantity,
-            unitPrice: $unitPrice,
-            createdAt: $item->getCreatedAt()
-        );
-
-        return $this->itemRepository->update($updated);
+            return $this->itemRepository->update(new ProposalItem(
+                id: $itemId,
+                proposalId: $proposalId,
+                description: array_key_exists('description', $data) ? $this->parseDescription($data['description']) : $item->getDescription(),
+                quantity: array_key_exists('quantity', $data) ? $this->parseQuantity($data['quantity']) : $item->getQuantity(),
+                unitPrice: array_key_exists('unit_price', $data) ? $this->parseUnitPrice($data['unit_price']) : $item->getUnitPrice(),
+                createdAt: $item->getCreatedAt()
+            ));
+        });
     }
 
     public function removeItem(string $proposalId, string $itemId): void
     {
-        $proposal = $this->proposalRepository->findById($proposalId);
+        $this->transaction(function () use ($proposalId, $itemId): null {
+            $this->editableLockedProposal($proposalId);
+            $item = $this->itemRepository->findById($itemId);
+
+            if (!$item || $item->getProposalId() !== $proposalId) {
+                throw new InvalidArgumentException('Item não encontrado');
+            }
+
+            $this->itemRepository->delete($itemId);
+
+            return null;
+        });
+    }
+
+    private function lockedProposal(string $id): Proposal
+    {
+        $proposal = $this->proposalRepository->findById($id, true);
 
         if (!$proposal) {
             throw new InvalidArgumentException('Proposta não encontrada');
         }
 
+        return $proposal;
+    }
+
+    private function editableLockedProposal(string $proposalId): Proposal
+    {
+        $proposal = $this->lockedProposal($proposalId);
+
         if (!$proposal->getStatus()->canEdit()) {
             throw new InvalidArgumentException('Proposta não pode ser editada');
         }
 
-        $item = $this->itemRepository->findById($itemId);
-
-        if (!$item || $item->getProposalId() !== $proposalId) {
-            throw new InvalidArgumentException('Item não encontrado');
-        }
-
-        $this->itemRepository->delete($itemId);
+        return $proposal;
     }
 
+    /**
+     * @template T
+     * @param callable(): T $callback
+     * @return T
+     */
+    private function transaction(callable $callback): mixed
+    {
+        $this->pdo->beginTransaction();
+
+        try {
+            $result = $callback();
+            $this->pdo->commit();
+
+            return $result;
+        } catch (Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * @param list<ProposalItem> $items
+     * @return array{subtotal: float, discount: float, total: float}
+     */
     private function calculateTotals(array $items, float $discountPercent): array
     {
         $subtotalCents = 0;
 
         foreach ($items as $item) {
-            $subtotalCents += $this->moneyToCents($item->getUnitPrice()) * $item->getQuantity();
+            $itemCents = $this->moneyToCents($item->getUnitPrice());
+
+            if ($item->getQuantity() > intdiv(PHP_INT_MAX, max(1, $itemCents))) {
+                throw new InvalidArgumentException('Total da proposta excede o limite permitido');
+            }
+
+            $lineCents = $itemCents * $item->getQuantity();
+
+            if ($subtotalCents > PHP_INT_MAX - $lineCents) {
+                throw new InvalidArgumentException('Total da proposta excede o limite permitido');
+            }
+
+            $subtotalCents += $lineCents;
         }
 
         $discountBasisPoints = (int) round($discountPercent * 100);
@@ -405,19 +392,66 @@ class ProposalService
         ];
     }
 
+    private function parseClientId(mixed $value): string
+    {
+        if (!is_string($value) || trim($value) === '') {
+            throw new InvalidArgumentException('Cliente é obrigatório');
+        }
+
+        $value = trim($value);
+
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) !== 1) {
+            throw new InvalidArgumentException('Cliente inválido');
+        }
+
+        return $value;
+    }
+
+    private function parseDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (!is_string($value)) {
+            throw new InvalidArgumentException('Data de validade inválida');
+        }
+
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+
+        if ($date === false || $date->format('Y-m-d') !== $value) {
+            throw new InvalidArgumentException('Data de validade inválida');
+        }
+
+        return $value;
+    }
+
+    private function parseNotes(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (!is_string($value) || strlen($value) > self::MAX_NOTES_LENGTH) {
+            throw new InvalidArgumentException('Observações inválidas');
+        }
+
+        return trim($value);
+    }
+
     private function parseDiscountPercent(mixed $value): float
     {
         if (!is_numeric($value)) {
             throw new InvalidArgumentException('Percentual de desconto inválido');
         }
 
-        $discountPercent = round((float) $value, 2);
+        $discountPercent = (float) $value;
 
-        if ($discountPercent < 0 || $discountPercent > 100) {
+        if (!is_finite($discountPercent) || $discountPercent < 0 || $discountPercent > 100) {
             throw new InvalidArgumentException('Percentual de desconto inválido');
         }
 
-        return $discountPercent;
+        return round($discountPercent, 2);
     }
 
     private function parseDescription(mixed $value): string
@@ -428,6 +462,10 @@ class ProposalService
             throw new InvalidArgumentException('Descrição é obrigatória');
         }
 
+        if (strlen($description) > self::MAX_DESCRIPTION_LENGTH) {
+            throw new InvalidArgumentException('Descrição inválida');
+        }
+
         return $description;
     }
 
@@ -435,7 +473,7 @@ class ProposalService
     {
         $quantity = filter_var($value, FILTER_VALIDATE_INT);
 
-        if ($quantity === false || $quantity < 1) {
+        if ($quantity === false || $quantity < 1 || $quantity > self::MAX_QUANTITY) {
             throw new InvalidArgumentException('Quantidade inválida');
         }
 
@@ -448,13 +486,13 @@ class ProposalService
             throw new InvalidArgumentException('Preço unitário inválido');
         }
 
-        $unitPrice = round((float) $value, 2);
+        $unitPrice = (float) $value;
 
-        if ($unitPrice <= 0) {
+        if (!is_finite($unitPrice) || $unitPrice <= 0 || $unitPrice > self::MAX_UNIT_PRICE) {
             throw new InvalidArgumentException('Preço unitário inválido');
         }
 
-        return $unitPrice;
+        return round($unitPrice, 2);
     }
 
     private function moneyToCents(float $amount): int

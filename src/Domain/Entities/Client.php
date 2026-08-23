@@ -7,13 +7,13 @@ namespace App\Domain\Entities;
 class Client
 {
     public function __construct(
-        private ?string $id,
-        private string $name,
-        private string $email,
-        private ?string $phone,
-        private ?string $company,
-        private ?string $createdAt = null,
-        private ?string $updatedAt = null
+        private readonly ?string $id,
+        private readonly string $name,
+        private readonly string $email,
+        private readonly ?string $phone,
+        private readonly ?string $company,
+        private readonly ?string $createdAt = null,
+        private readonly ?string $updatedAt = null
     ) {
     }
 
@@ -52,6 +52,7 @@ class Client
         return $this->updatedAt;
     }
 
+    /** @return array{id: ?string, name: string, email: string, phone: ?string, company: ?string, created_at: ?string, updated_at: ?string} */
     public function toArray(): array
     {
         return [
