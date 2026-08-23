@@ -1,0 +1,10 @@
+title = "proposals-api"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow synthetic bearer token used by an earlier unit-test fixture"
+regexes = [
+    '''^0123456789abcdef0123456789abcdef$''',
+]
