@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 
 class BearerTokenGuardTest extends TestCase
 {
-    private const TOKEN = '0123456789abcdef0123456789abcdef';
+    private const string TOKEN = 'test-bearer-token-for-proposals-api';
 
     public function testRequiresTokenWithMinimumLength(): void
     {
@@ -31,6 +31,6 @@ class BearerTokenGuardTest extends TestCase
         $this->assertFalse($guard->allows(null));
         $this->assertFalse($guard->allows(self::TOKEN));
         $this->assertFalse($guard->allows('Basic '.self::TOKEN));
-        $this->assertFalse($guard->allows('Bearer 0123456789abcdef0123456789abcdee'));
+        $this->assertFalse($guard->allows('Bearer '.self::TOKEN.'-different'));
     }
 }
