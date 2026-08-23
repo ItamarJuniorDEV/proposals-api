@@ -24,10 +24,30 @@ class ProposalRepository implements ProposalRepositoryInterface
         return array_map($this->toEntity(...), $rows);
     }
 
-    public function findById(string $id): ?Proposal
+    public function findById(string $id, bool $forUpdate = false): ?Proposal
     {
-        $stmt = $this->pdo->prepare("SELECT * FROM proposals WHERE id = :id");
+        $sql = 'SELECT * FROM proposals WHERE id = :id';
+
+        if ($forUpdate) {
+            $sql .= ' FOR UPDATE';
+        }
+
+        $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['id' => $id]);
+        $row = $stmt->fetch();
+
+        return $row ? $this->toEntity($row) : null;
+    }
+
+    public function findRevisionByParentId(string $parentId): ?Proposal
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT * FROM proposals
+            WHERE parent_id = :parent_id
+            ORDER BY version DESC
+            LIMIT 1
+        ");
+        $stmt->execute(['parent_id' => $parentId]);
         $row = $stmt->fetch();
 
         return $row ? $this->toEntity($row) : null;

@@ -12,6 +12,7 @@ use App\Infrastructure\Persistence\ContractRepository;
 use App\Infrastructure\Persistence\ProposalItemRepository;
 use App\Infrastructure\Persistence\ProposalRepository;
 use App\Services\ProposalService;
+use InvalidArgumentException;
 use PDO;
 use PDOException;
 use PHPUnit\Framework\TestCase;
@@ -113,11 +114,27 @@ final class PersistenceIntegrationTest extends TestCase
             $this->assertNotNull($storedProposal);
             $this->assertSame(ProposalStatus::Sent, $storedProposal->getStatus());
 
-            $count = self::$pdo
-                ->query("SELECT COUNT(*) FROM contracts WHERE proposal_id = '{$proposalId}'")
-                ->fetchColumn();
+            $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM contracts WHERE proposal_id = :proposal_id');
+            $stmt->execute(['proposal_id' => $proposalId]);
 
-            $this->assertSame(1, (int) $count);
+            $this->assertSame(1, (int) $stmt->fetchColumn());
+        }
+    }
+
+    public function testSourceProposalAllowsOnlyOneDirectRevision(): void
+    {
+        $proposalId = $this->createSentProposal();
+
+        $revision = $this->proposalService->revise($proposalId);
+
+        $this->assertSame(2, $revision->getVersion());
+        $this->assertSame($proposalId, $revision->getParentId());
+
+        try {
+            $this->proposalService->revise($proposalId);
+            $this->fail('A proposta original não deveria gerar duas revisões diretas');
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame('Proposta já possui uma revisão', $e->getMessage());
         }
     }
 

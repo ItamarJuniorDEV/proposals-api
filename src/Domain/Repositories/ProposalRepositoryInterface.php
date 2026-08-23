@@ -11,7 +11,9 @@ interface ProposalRepositoryInterface
     /** @return list<Proposal> */
     public function findAll(): array;
 
-    public function findById(string $id): ?Proposal;
+    public function findById(string $id, bool $forUpdate = false): ?Proposal;
+
+    public function findRevisionByParentId(string $parentId): ?Proposal;
 
     /** @return list<Proposal> */
     public function findByClientId(string $clientId): array;

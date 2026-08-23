@@ -101,10 +101,12 @@ class ProposalServiceIntegrityTest extends TestCase
         $this->service->approve('proposal-123');
     }
 
-    public function testApproveRejectsDraftWithoutStartingTransaction(): void
+    public function testApproveRejectsDraftAndRollsBackTransaction(): void
     {
         $this->proposalRepository->method('findById')->willReturn($this->proposal(ProposalStatus::Draft));
-        $this->pdo->expects($this->never())->method('beginTransaction');
+        $this->pdo->expects($this->once())->method('beginTransaction')->willReturn(true);
+        $this->pdo->expects($this->never())->method('commit');
+        $this->pdo->expects($this->once())->method('rollBack')->willReturn(true);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Proposta não pode ser aprovada');
@@ -116,7 +118,9 @@ class ProposalServiceIntegrityTest extends TestCase
     {
         $this->proposalRepository->method('findById')->willReturn($this->proposal(ProposalStatus::Sent, '2030-12-31'));
         $this->itemRepository->method('findByProposalId')->willReturn([]);
-        $this->pdo->expects($this->never())->method('beginTransaction');
+        $this->pdo->expects($this->once())->method('beginTransaction')->willReturn(true);
+        $this->pdo->expects($this->never())->method('commit');
+        $this->pdo->expects($this->once())->method('rollBack')->willReturn(true);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Proposta precisa ter pelo menos um item');
@@ -134,13 +138,41 @@ class ProposalServiceIntegrityTest extends TestCase
         $this->service->reject('proposal-123');
     }
 
-    public function testReviseRejectsApprovedStateWithoutStartingTransaction(): void
+    public function testReviseRejectsApprovedStateAndRollsBackTransaction(): void
     {
         $this->proposalRepository->method('findById')->willReturn($this->proposal(ProposalStatus::Approved));
-        $this->pdo->expects($this->never())->method('beginTransaction');
+        $this->pdo->expects($this->once())->method('beginTransaction')->willReturn(true);
+        $this->pdo->expects($this->never())->method('commit');
+        $this->pdo->expects($this->once())->method('rollBack')->willReturn(true);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Proposta não pode ser revisada');
+
+        $this->service->revise('proposal-123');
+    }
+
+    public function testReviseRejectsWhenSourceAlreadyHasRevision(): void
+    {
+        $proposal = $this->proposal(ProposalStatus::Sent);
+        $revision = new Proposal(
+            id: 'proposal-456',
+            clientId: 'client-123',
+            version: 2,
+            parentId: 'proposal-123',
+            status: ProposalStatus::Draft,
+            validUntil: null,
+            discountPercent: 0,
+            notes: null
+        );
+
+        $this->proposalRepository->method('findById')->willReturn($proposal);
+        $this->proposalRepository->method('findRevisionByParentId')->willReturn($revision);
+        $this->pdo->expects($this->once())->method('beginTransaction')->willReturn(true);
+        $this->pdo->expects($this->never())->method('commit');
+        $this->pdo->expects($this->once())->method('rollBack')->willReturn(true);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Proposta já possui uma revisão');
 
         $this->service->revise('proposal-123');
     }
