@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Security;
 
-final class BearerTokenGuard
+final readonly class BearerTokenGuard
 {
-    private const MIN_TOKEN_LENGTH = 32;
+    private const int MIN_TOKEN_LENGTH = 32;
 
-    public function __construct(private readonly string $expectedToken)
+    public function __construct(private string $expectedToken)
     {
     }
 
