@@ -30,6 +30,7 @@
     },
     "scripts": {
         "test": "phpunit",
+        "test:integration": "phpunit --configuration phpunit.integration.xml",
         "format": "pint",
         "format:check": "pint --test",
         "analyse": "phpstan analyse --memory-limit=512M",
