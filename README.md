@@ -1,35 +1,35 @@
 # Proposals API
 
 ![CI](https://github.com/ItamarJuniorDEV/proposals-api/actions/workflows/ci.yml/badge.svg)
+![Security](https://github.com/ItamarJuniorDEV/proposals-api/actions/workflows/security.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-API REST em PHP para gerenciamento de clientes, propostas comerciais e contratos. O domínio controla o ciclo de vida da proposta, revisões versionadas, validade e geração de contrato após aprovação.
+API REST em PHP para clientes, propostas comerciais e contratos. O projeto não usa framework e concentra a parte mais importante no domínio: transições de estado, revisões versionadas, cálculo monetário, persistência com PDO e consistência transacional.
 
-## Funcionalidades
+## O que o projeto cobre
 
 - cadastro de clientes;
-- criação e edição de propostas em rascunho;
-- itens com quantidade e preço unitário;
-- desconto percentual e cálculo de totais;
-- envio, aprovação e rejeição de propostas;
-- revisão com criação de uma nova versão e cópia dos itens;
-- bloqueio de aprovação de propostas vencidas;
-- geração de contrato a partir de uma proposta aprovada.
+- propostas em rascunho com itens, desconto e validade;
+- envio, aprovação e rejeição;
+- revisão por nova versão, preservando a proposta anterior;
+- contrato criado somente a partir de proposta aprovada;
+- rollback quando uma operação de negócio não pode ser concluída por inteiro;
+- autenticação Bearer nas rotas de negócio.
 
 ## Stack
 
-| Camada | Tecnologia |
+| Área | Tecnologia |
 |---|---|
 | Backend | PHP 8.3+ |
 | Banco | PostgreSQL 15, PDO |
 | Testes | PHPUnit 11 |
-| Infra | Docker, GitHub Actions |
+| Qualidade | Pint, PHPStan nível 6, Rector |
+| Segurança | Composer Audit, Gitleaks |
+| CI | GitHub Actions |
 
-O projeto não utiliza framework. A separação principal fica entre `Controllers`, `Services`, objetos de domínio, interfaces de repositório e implementações de persistência com PDO.
+A aplicação separa HTTP, services de domínio, entidades, contratos de repositório e persistência PostgreSQL. As interfaces de repositório existem porque os services coordenam regras e transações que não devem depender de SQL espalhado pelos controllers.
 
-## Ciclo de vida da proposta
-
-As transições permitidas são definidas por `ProposalStatus`:
+## Ciclo de vida
 
 ```text
 draft -> sent
@@ -38,11 +38,13 @@ sent  -> rejected
 sent/rejected -> nova revisão em draft
 ```
 
-Uma proposta enviada só pode ser aprovada enquanto estiver dentro de `valid_until`. A revisão não altera a versão anterior: uma nova proposta é criada com `version + 1` e `parent_id` apontando para a proposta revisada.
+Uma proposta enviada só pode ser aprovada dentro de `valid_until`. A revisão cria uma nova proposta com `version + 1` e `parent_id` apontando para a versão revisada. Cada versão pode gerar apenas uma revisão direta.
+
+As mutações de uma proposta bloqueiam a linha correspondente durante a transação. Isso evita que duas requisições concorrentes decidam o estado da mesma proposta usando uma leitura antiga. Aprovação e criação do contrato também são confirmadas na mesma transação.
 
 ## Como rodar
 
-Pré-requisitos: PHP 8.3+, Composer, Docker e cliente `psql`.
+Pré-requisitos: PHP 8.3+, Composer, Docker e um cliente PostgreSQL.
 
 ```bash
 git clone https://github.com/ItamarJuniorDEV/proposals-api.git
@@ -52,7 +54,13 @@ cp .env.example .env
 docker compose up -d
 ```
 
-O `.env.example` já usa os dados do PostgreSQL definido no `docker-compose.yml`.
+Gere um token local com pelo menos 32 caracteres:
+
+```bash
+php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+```
+
+Coloque o valor em `API_TOKEN` no `.env`.
 
 Execute as migrations na ordem:
 
@@ -62,15 +70,20 @@ psql -h 127.0.0.1 -U postgres -d proposal -f database/migrations/002_create_prop
 psql -h 127.0.0.1 -U postgres -d proposal -f database/migrations/003_create_proposal_items_table.sql
 psql -h 127.0.0.1 -U postgres -d proposal -f database/migrations/004_create_contracts_table.sql
 psql -h 127.0.0.1 -U postgres -d proposal -f database/migrations/005_add_domain_constraints.sql
+psql -h 127.0.0.1 -U postgres -d proposal -f database/migrations/006_add_revision_constraint.sql
 ```
 
-Depois inicie a API:
+Inicie a API:
 
 ```bash
 php -S localhost:8000 -t public
 ```
 
-A API fica disponível em `http://localhost:8000`.
+`GET /` funciona como health check público. As demais rotas exigem o token:
+
+```bash
+curl -H "Authorization: Bearer SEU_TOKEN" http://localhost:8000/proposals
+```
 
 ## Rotas principais
 
@@ -89,32 +102,33 @@ A API fica disponível em `http://localhost:8000`.
 | GET | `/contracts` | listar contratos |
 | GET | `/contracts/{id}` | consultar contrato |
 
+Os IDs recebidos nas rotas são validados como UUID. O corpo JSON é limitado a 1 MB e respostas de erro interno não expõem exceções ou detalhes do banco.
+
 ## Integridade dos dados
 
-A aprovação atualiza o status da proposta e cria o contrato dentro da mesma transação PDO. Se a persistência do contrato falhar, a alteração de status também é revertida.
+O PostgreSQL mantém restrições para:
 
-A criação de uma revisão e a cópia de seus itens também utilizam uma única transação.
+- status válidos;
+- desconto entre 0 e 100%;
+- quantidade e preço positivos;
+- apenas um contrato por proposta;
+- total de contrato não negativo;
+- uma única revisão direta por versão.
 
-Valores persistidos usam colunas `DECIMAL` no PostgreSQL. Os totais são calculados em centavos inteiros antes de serem convertidos para o formato monetário, evitando acumular imprecisões de ponto flutuante durante soma e aplicação do desconto.
+Valores monetários são persistidos em `DECIMAL`. Os totais são calculados em centavos inteiros antes da conversão para o valor final, evitando acumular erro de ponto flutuante durante soma e desconto.
 
-O banco mantém restrições para status válidos, percentual de desconto entre 0 e 100, quantidade positiva, preço unitário positivo e total de contrato não negativo.
-
-## Testes
+## Testes e qualidade
 
 ```bash
 composer test
+composer format:check
+composer analyse
+composer rector
 ```
 
-Os testes cobrem entidades, transições de estado e regras dos services, incluindo envio, aprovação, rejeição, revisão, expiração, validações de itens, cálculo monetário e rollback das operações transacionais.
+Além dos testes unitários, o CI sobe PostgreSQL e executa testes de integração contra as migrations e os repositórios reais. A suíte valida inclusive rollback de aprovação quando a criação do contrato falha.
 
-O CI executa a suíte em PHP 8.3 e 8.4. O workflow de segurança verifica o `composer.lock` com `composer audit` e executa Gitleaks sobre o repositório.
-
-## Decisões técnicas
-
-- **Estados explícitos:** `ProposalStatus` concentra as transições permitidas da proposta.
-- **Revisões imutáveis:** uma revisão cria uma nova versão em vez de sobrescrever o conteúdo enviado anteriormente.
-- **Aprovação atômica:** mudança de status e criação do contrato são confirmadas ou revertidas juntas.
-- **Persistência isolada:** os services dependem de interfaces de repositório e a implementação SQL fica na camada de infraestrutura.
+O pipeline principal roda PHP 8.3 e 8.4, Pint, PHPStan nível 6 sem baseline, Rector em dry-run e a integração com PostgreSQL. O workflow de segurança executa `composer audit` e Gitleaks.
 
 ## Licença
 
