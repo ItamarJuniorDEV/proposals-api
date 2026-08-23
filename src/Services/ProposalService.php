@@ -19,10 +19,10 @@ use Throwable;
 
 class ProposalService
 {
-    private const MAX_NOTES_LENGTH = 5000;
-    private const MAX_DESCRIPTION_LENGTH = 255;
-    private const MAX_QUANTITY = 1000000;
-    private const MAX_UNIT_PRICE = 99999999.99;
+    private const int MAX_NOTES_LENGTH = 5000;
+    private const int MAX_DESCRIPTION_LENGTH = 255;
+    private const int MAX_QUANTITY = 1000000;
+    private const float MAX_UNIT_PRICE = 99999999.99;
 
     public function __construct(
         private readonly ProposalRepositoryInterface $proposalRepository,
