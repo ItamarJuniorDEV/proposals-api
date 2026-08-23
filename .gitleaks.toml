@@ -4,7 +4,8 @@ title = "proposals-api"
 useDefault = true
 
 [allowlist]
-description = "Allow synthetic bearer token used by an earlier unit-test fixture"
+description = "Allow synthetic values used in tests and documentation"
 regexes = [
     '''^0123456789abcdef0123456789abcdef$''',
+    '''^SEU_TOKEN$''',
 ]
